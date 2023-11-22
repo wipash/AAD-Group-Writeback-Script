@@ -101,7 +101,9 @@ function Save-ADGroup {
         $ADGroupName = $ADGroupNamePattern -f $AADGroup.displayName, $AADGroup.id, $AADGroup.mailNickname
         if($ADGroupName.Length -gt 64) {
             Write-Warning "AD group name '$ADGroupName' is longer than 64 characters and will be truncated"
-            $ADGroupName = $ADGroupName.Substring(0,64).Trim()
+            # Truncate to 60 characters and add a hash of the group name to make it unique
+            $ADGroupNameHash = (Invoke-HashString -String $ADGroupName).Substring(0,4)
+            $ADGroupName = $ADGroupName.Substring(0,60).Trim() + $ADGroupNameHash
         }
 
         if(!$ADGroupMap.Contains($AADGroup.id)) {
@@ -143,7 +145,7 @@ function Save-ADGroup {
    ConvertFrom-Base64JWTLengthHelper  "abc"
 #>
 
-function ConvertFrom-Base64JWTLengthHelper 
+function ConvertFrom-Base64JWTLengthHelper
 {
     Param
     (
@@ -336,7 +338,7 @@ function Get-ADGroupForDeprovisioning {
     )
 
     Begin {
-        
+
     }
     Process {
         Write-Verbose "Starting Get-ADGroupForDeletion"
@@ -392,15 +394,15 @@ function Initialize-GraphEnvironment
         {
             @{
                 GraphUrl = "https://graph.microsoft.com"
-                LoginUrl = "https://login.microsoftonline.com"      
+                LoginUrl = "https://login.microsoftonline.com"
             }
         }
         'AzureUSGovernment'
         {
             @{
                 GraphUrl = "https://graph.microsoft.us"
-                LoginUrl = "https://login.microsoftonline.us"      
-            }   
+                LoginUrl = "https://login.microsoftonline.us"
+            }
         }
         default
         {
@@ -408,6 +410,30 @@ function Initialize-GraphEnvironment
         }
     }
     return [pscustomobject]$graphEnvironmentTemplate
+}
+
+
+<#
+.Synopsis
+   Function that hashes a string
+.Description
+   Function that hashes a string
+.Example
+   Invoke-HashString -String "Hello World"
+#>
+function Invoke-HashString {
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory = $true,
+            Position = 0)]
+        [string] $String
+    )
+
+    $Hasher = [System.Security.Cryptography.MD5]::Create()
+    $Hash = $Hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($String))
+    $HashString = -join $Hash.ForEach{$_.ToString("X2")}
+    return $HashString
 }
 
 Export-ModuleMember "Get-GraphRequestRecursive", "Save-ADGroup", "ConvertFrom-Base64JWT", "Test-Configuration", "Get-ADGroupForDeprovisioning", "Initialize-GraphEnvironment"
