@@ -99,23 +99,25 @@ function Save-ADGroup {
     Process {
         Write-Verbose " - Processing AADGroup '$($AADGroup.displayName)' ($($AADGroup.id))"
         $ADGroupName = $ADGroupNamePattern -f $AADGroup.displayName, $AADGroup.id, $AADGroup.mailNickname
+        $ADGroupDisplayName = $ADGroupName
         if($ADGroupName.Length -gt 64) {
-            Write-Warning "AD group name '$ADGroupName' is longer than 64 characters and will be truncated"
             # Truncate to 60 characters and add a hash of the group name to make it unique
             $ADGroupNameHash = (Invoke-HashString -String $ADGroupName).Substring(0,4)
-            $ADGroupName = $ADGroupName.Substring(0,60).Trim() + $ADGroupNameHash
+            $ADGroupNameTruncated = $ADGroupName.Substring(0,59).Trim() + '_' + $ADGroupNameHash
+            Write-Warning "AD group name '$ADGroupName' is longer than 64 characters and will be truncated to $ADGroupNameTruncated"
+            $ADGroupName = $ADGroupNameTruncated
         }
 
         if(!$ADGroupMap.Contains($AADGroup.id)) {
             Write-Verbose "  - Creating group '$($AADGroup.displayName)' in AD"
-            $NewGroup =  New-ADGroup -Name $ADGroupName -DisplayName $ADGroupName -GroupScope Global -GroupCategory Security -Path $DestinationOU -OtherAttributes @{"$($ADGroupObjectIDAttribute)" = $AADGroup.id } -PassThru
+            $NewGroup =  New-ADGroup -Name $ADGroupName -DisplayName $ADGroupDisplayName -GroupScope Global -GroupCategory Security -Path $DestinationOU -OtherAttributes @{"$($ADGroupObjectIDAttribute)" = $AADGroup.id } -PassThru
             $ADGroupMap[$AADGroup.id] = Get-ADGroup -Identity $NewGroup.SID -Properties members, $ADGroupObjectIDAttribute, displayName, name
         }
         else {
             $ADGroup = $ADGroupMap[$AADGroup.id]
-            if($ADGroupName -ne $ADGroup.displayName) {
-                Write-Verbose "  - Fixing displayname of AD group: '$($ADGroup.DisplayName)' -> $($ADGroupName)"
-                Set-ADGroup -DisplayName $ADGroupName -Identity $ADGroup.SID
+            if($ADGroupDisplayName -ne $ADGroup.displayName) {
+                Write-Verbose "  - Fixing displayname of AD group: '$($ADGroup.DisplayName)' -> $($ADGroupDisplayName)"
+                Set-ADGroup -DisplayName $ADGroupDisplayName -Identity $ADGroup.SID
             }
 
             if($ADGroupName -ne $ADGroup.name) {
