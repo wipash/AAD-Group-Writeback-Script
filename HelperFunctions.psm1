@@ -111,23 +111,23 @@ function Save-ADGroup {
         if(!$ADGroupMap.Contains($AADGroup.id)) {
             Write-Verbose "  - Creating group '$($AADGroup.displayName)' in AD"
             $NewGroup =  New-ADGroup -Name $ADGroupName -DisplayName $ADGroupDisplayName -GroupScope Global -GroupCategory Security -Path $DestinationOU -OtherAttributes @{"$($ADGroupObjectIDAttribute)" = $AADGroup.id } -PassThru
-            $ADGroupMap[$AADGroup.id] = Get-ADGroup -Identity $NewGroup.SID -Properties members, $ADGroupObjectIDAttribute, displayName, name
+            $ADGroupMap[$AADGroup.id] = Get-ADGroup -Identity $NewGroup.ObjectGUID -Properties members, $ADGroupObjectIDAttribute, displayName, name
         }
         else {
             $ADGroup = $ADGroupMap[$AADGroup.id]
             if($ADGroupDisplayName -ne $ADGroup.displayName) {
                 Write-Verbose "  - Fixing displayname of AD group: '$($ADGroup.DisplayName)' -> $($ADGroupDisplayName)"
-                Set-ADGroup -DisplayName $ADGroupDisplayName -Identity $ADGroup.SID
+                Set-ADGroup -DisplayName $ADGroupDisplayName -Identity $ADGroup.ObjectGUID
             }
 
             if($ADGroupName -ne $ADGroup.name) {
                 Write-Verbose "  - Fixing name of AD group: '$($ADGroup.name)' -> $($ADGroupName)"
-                Rename-ADObject -NewName $ADGroupName -Identity $ADGroup.SID
+                Rename-ADObject -NewName $ADGroupName -Identity $ADGroup.ObjectGUID
             }
 
             if ($ADGroup.GroupCategory -ne 'Security' -or $ADGroup.GroupScope -ne 'Global') {
                 Write-Verbose "  - Changing group scope and category to global security"
-                Set-ADGroup -GroupScope Global -GroupCategory Security -Identity $ADGroup.SID
+                Set-ADGroup -GroupScope Global -GroupCategory Security -Identity $ADGroup.ObjectGUID
             }
         }
     }
