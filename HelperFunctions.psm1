@@ -99,31 +99,35 @@ function Save-ADGroup {
     Process {
         Write-Verbose " - Processing AADGroup '$($AADGroup.displayName)' ($($AADGroup.id))"
         $ADGroupName = $ADGroupNamePattern -f $AADGroup.displayName, $AADGroup.id, $AADGroup.mailNickname
+        $ADGroupDisplayName = $ADGroupName
         if($ADGroupName.Length -gt 64) {
-            Write-Warning "AD group name '$ADGroupName' is longer than 64 characters and will be truncated"
-            $ADGroupName = $ADGroupName.Substring(0,64).Trim()
+            # Truncate to 60 characters and add a hash of the group name to make it unique
+            $ADGroupNameHash = (Invoke-HashString -String $ADGroupName).Substring(0,4)
+            $ADGroupNameTruncated = $ADGroupName.Substring(0,59).Trim() + '_' + $ADGroupNameHash
+            Write-Warning "AD group name '$ADGroupName' is longer than 64 characters and will be truncated to $ADGroupNameTruncated"
+            $ADGroupName = $ADGroupNameTruncated
         }
 
         if(!$ADGroupMap.Contains($AADGroup.id)) {
             Write-Verbose "  - Creating group '$($AADGroup.displayName)' in AD"
-            $NewGroup =  New-ADGroup -Name $ADGroupName -DisplayName $ADGroupName -GroupScope Global -GroupCategory Security -Path $DestinationOU -OtherAttributes @{"$($ADGroupObjectIDAttribute)" = $AADGroup.id } -PassThru
-            $ADGroupMap[$AADGroup.id] = Get-ADGroup -Identity $NewGroup.SID -Properties members, $ADGroupObjectIDAttribute, displayName, name
+            $NewGroup =  New-ADGroup -Name $ADGroupName -DisplayName $ADGroupDisplayName -GroupScope Global -GroupCategory Security -Path $DestinationOU -OtherAttributes @{"$($ADGroupObjectIDAttribute)" = $AADGroup.id } -PassThru
+            $ADGroupMap[$AADGroup.id] = Get-ADGroup -Identity $NewGroup.ObjectGUID -Properties members, $ADGroupObjectIDAttribute, displayName, name
         }
         else {
             $ADGroup = $ADGroupMap[$AADGroup.id]
-            if($ADGroupName -ne $ADGroup.displayName) {
-                Write-Verbose "  - Fixing displayname of AD group: '$($ADGroup.DisplayName)' -> $($ADGroupName)"
-                Set-ADGroup -DisplayName $ADGroupName -Identity $ADGroup.SID
+            if($ADGroupDisplayName -ne $ADGroup.displayName) {
+                Write-Verbose "  - Fixing displayname of AD group: '$($ADGroup.DisplayName)' -> $($ADGroupDisplayName)"
+                Set-ADGroup -DisplayName $ADGroupDisplayName -Identity $ADGroup.ObjectGUID
             }
 
             if($ADGroupName -ne $ADGroup.name) {
                 Write-Verbose "  - Fixing name of AD group: '$($ADGroup.name)' -> $($ADGroupName)"
-                Rename-ADObject -NewName $ADGroupName -Identity $ADGroup.SID
+                Rename-ADObject -NewName $ADGroupName -Identity $ADGroup.ObjectGUID
             }
 
             if ($ADGroup.GroupCategory -ne 'Security' -or $ADGroup.GroupScope -ne 'Global') {
                 Write-Verbose "  - Changing group scope and category to global security"
-                Set-ADGroup -GroupScope Global -GroupCategory Security -Identity $ADGroup.SID
+                Set-ADGroup -GroupScope Global -GroupCategory Security -Identity $ADGroup.ObjectGUID
             }
         }
     }
@@ -143,7 +147,7 @@ function Save-ADGroup {
    ConvertFrom-Base64JWTLengthHelper  "abc"
 #>
 
-function ConvertFrom-Base64JWTLengthHelper 
+function ConvertFrom-Base64JWTLengthHelper
 {
     Param
     (
@@ -336,7 +340,7 @@ function Get-ADGroupForDeprovisioning {
     )
 
     Begin {
-        
+
     }
     Process {
         Write-Verbose "Starting Get-ADGroupForDeletion"
@@ -392,15 +396,15 @@ function Initialize-GraphEnvironment
         {
             @{
                 GraphUrl = "https://graph.microsoft.com"
-                LoginUrl = "https://login.microsoftonline.com"      
+                LoginUrl = "https://login.microsoftonline.com"
             }
         }
         'AzureUSGovernment'
         {
             @{
                 GraphUrl = "https://graph.microsoft.us"
-                LoginUrl = "https://login.microsoftonline.us"      
-            }   
+                LoginUrl = "https://login.microsoftonline.us"
+            }
         }
         default
         {
@@ -408,6 +412,30 @@ function Initialize-GraphEnvironment
         }
     }
     return [pscustomobject]$graphEnvironmentTemplate
+}
+
+
+<#
+.Synopsis
+   Function that hashes a string
+.Description
+   Function that hashes a string
+.Example
+   Invoke-HashString -String "Hello World"
+#>
+function Invoke-HashString {
+    [CmdletBinding()]
+    Param
+    (
+        [Parameter(Mandatory = $true,
+            Position = 0)]
+        [string] $String
+    )
+
+    $Hasher = [System.Security.Cryptography.MD5]::Create()
+    $Hash = $Hasher.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($String))
+    $HashString = -join $Hash.ForEach{$_.ToString("X2")}
+    return $HashString
 }
 
 Export-ModuleMember "Get-GraphRequestRecursive", "Save-ADGroup", "ConvertFrom-Base64JWT", "Test-Configuration", "Get-ADGroupForDeprovisioning", "Initialize-GraphEnvironment"
